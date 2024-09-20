@@ -1,5 +1,5 @@
-# controle_pid_filtro_kalman
-Projeto motor DC com filtro de Kalman
+
+Projeto motor DC com filtro de Kalman
 
 
 ![image](https://github.com/user-attachments/assets/e09b50f6-d80d-447b-aa24-615cb38af8d3)
