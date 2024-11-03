@@ -1,0 +1,112 @@
+clc;
+clear;
+close all;
+
+% Parâmetros do sistema
+initialSetpoint = 50; % Setpoint inicial em RPM
+finalSetpoint = 100; % Setpoint após o degrau em RPM
+N = 400; % Número de steps
+Ts = 0.0075; % Tempo de amostragem em segundos (7.5 ms)
+
+% Matriz de estados (modelo discreto)
+A = [0, 1, 0; 0, 0, 1; -4.23, -9.28, -2.14];
+B = [0; 0; 4.23];
+H = [1, 0, 0];
+Ad = eye(3) + A*Ts; % Discretização de A
+Bd = B*Ts;
+Hd = H;
+
+% Inicialização do filtro de Kalman
+xh = [0; 0; 0]; % Estado inicial estimado
+P = 100*eye(3); % Covariância inicial
+Q = 1.2*eye(3); % Covariância do processo
+R = 0.5; % Covariância do ruído de medida
+K = [1; 1; 1]; % Ganho de Kalman
+
+% Parâmetros PID
+Kp = 1.2;
+Ki = 0.01;
+Kd = 0.01;
+integral = 0;
+lastError = 0;
+
+% Janela para filtros de média móvel e mediana
+windowSize = 5;
+movingAverageWindow = zeros(1, windowSize);
+medianFilterWindow = zeros(1, windowSize);
+
+% Variáveis para plotagem
+time = (0:N-1) * Ts;
+measuredRPM = zeros(1, N);
+filteredRPM = zeros(1, N); % Filtro de Kalman
+movingAverageRPM = zeros(1, N);
+medianFilteredRPM = zeros(1, N);
+outputRPM = zeros(1, N);
+setpoint = initialSetpoint * ones(1, N);
+
+% Aplicação da entrada degrau após um quarto do tempo total
+stepIndex = round(N/4);
+setpoint(stepIndex:end) = finalSetpoint;
+
+% Simulação do sistema com dados fictícios de RPM
+for k = 2:N
+    % Sinal de controle (PID)
+    error = setpoint(k) - xh(1);
+    integral = integral + error * Ts;
+    derivative = (error - lastError) / Ts;
+    pidOutput = Kp * error + Ki * integral + Kd * derivative;
+    lastError = error;
+    
+    % Simulação do sistema (ruído e processo fictício)
+    w = 0.0367 * (rand() - 0.5); % Ruído do processo
+    v = 0.0231 * (rand() - 0.5); % Ruído de medida
+    outputRPM(k) = outputRPM(k-1) + Ts * pidOutput + w; % RPM simulado (planta)
+    measuredRPM(k) = outputRPM(k) + v; % RPM medido com ruído
+
+    % Filtro de Kalman
+    % Predição
+    xh = Ad * xh + Bd * pidOutput;
+    P = Ad * P * Ad' + Q;
+    
+    % Atualização (medida)
+    S = H * P * H' + R;
+    K = P * H' / S;
+    xh = xh + K * (measuredRPM(k) - H * xh);
+    P = P - K * H * P;
+
+    % Armazena valores filtrados por Kalman
+    filteredRPM(k) = xh(1);
+
+    % Filtro de média móvel
+    movingAverageWindow = [movingAverageWindow(2:end), measuredRPM(k)];
+    movingAverageRPM(k) = mean(movingAverageWindow);
+
+    % Filtro de mediana
+    medianFilterWindow = [medianFilterWindow(2:end), measuredRPM(k)];
+    medianFilteredRPM(k) = median(medianFilterWindow);
+end
+
+% Plotagem dos resultados comparativos
+figure;
+
+% Gráfico comparando Kalman e Média Móvel
+subplot(2,1,1);
+plot(time, filteredRPM, 'b', 'DisplayName', 'Filtered RPM (Kalman)');
+hold on;
+plot(time, movingAverageRPM, 'g', 'DisplayName', 'Filtered RPM (Moving Average)');
+plot(time, setpoint, 'k--', 'DisplayName', 'Setpoint');
+title('Comparison: Kalman Filter vs. Moving Average');
+xlabel('Time (s)');
+ylabel('RPM');
+legend;
+
+% Gráfico comparando Kalman e Mediana
+subplot(2,1,2);
+plot(time, filteredRPM, 'b', 'DisplayName', 'Filtered RPM (Kalman)');
+hold on;
+plot(time, medianFilteredRPM, 'c', 'DisplayName', 'Filtered RPM (Median)');
+plot(time, setpoint, 'k--', 'DisplayName', 'Setpoint');
+title('Comparison: Kalman Filter vs. Median Filter');
+xlabel('Time (s)');
+ylabel('RPM');
+legend;
